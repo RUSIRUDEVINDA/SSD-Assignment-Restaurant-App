@@ -1,0 +1,21 @@
+:root {
+  --font-size-base: 13px;
+  --font-size-sm: 12px;
+  --font-size-xs: 11px;
+}
+
+html {
+  font-size: var(--font-size-base);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-size: 1em;
+}
+
+.table th, .table td {
+  font-size: var(--font-size-sm);
+}
+
+.text-xs, .text-sm, .text-base {
+  font-size: var(--font-size-xs) !important;
+}
