@@ -1,4 +1,4 @@
-//username->admin  password->1234
+require("dotenv").config();
 
 const express = require("express");
 const mongoose = require("mongoose");
@@ -37,9 +37,14 @@ app.get('/api/reservation-requests', reservationRequestController.getReservation
 app.get('/api/restaurant/:restaurantId/reservation-requests', reservationRequestController.getReservationRequestsByRestaurant);
 app.patch('/api/reservation-requests/:id', reservationRequestController.updateReservationRequestStatus);
 
-mongoose.connect("mongodb+srv://admin:**********@airportmanagementsystem.8nzgv.mongodb.net/test")
+if (!process.env.MONGODB_URI) {
+  console.error("MONGODB_URI environment variable is required");
+  process.exit(1);
+}
+
+mongoose.connect(process.env.MONGODB_URI)
 .then(()=> console.log("Connected to MongoDB"))
 .then(()=>{
-    app.listen(5000);
+    app.listen(process.env.PORT || 5000);
 })
 .catch((err)=>console.log((err)));
