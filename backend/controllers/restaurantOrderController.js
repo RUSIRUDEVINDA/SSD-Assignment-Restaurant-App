@@ -2,6 +2,7 @@ const RestaurantOrder = require("../models/restaurantOrderModel");
 const whatsappService = require("../services/whatsappService");
 const emailService = require("../services/emailService");
 const { formatPhoneNumber } = require("../utils/phoneUtils");
+const { isUserInRestaurantScope } = require("../utils/restaurantMapping");
 
 //data display
 const getAllOrders = async (req, res, next) => {
@@ -129,8 +130,36 @@ const updateorder = async (req, res, next) => {
 
     try {
         // Validate required fields
-        if (!restaurantName || !itemsPurchased || !totalAmount || !fullName || !email || !phoneNumber || !pickupTime) {
+        if (!itemsPurchased || !totalAmount || !fullName || !phoneNumber || !pickupTime) {
             return res.status(400).json({ message: "All fields are required" });
+        }
+
+        // Fetch existing order to verify target existence and tenant scope
+        const existingOrder = await RestaurantOrder.findById(id);
+        if (!existingOrder) {
+            return res.status(404).json({ message: "Order not found" });
+        }
+
+        // Verify caller's restaurant scope against target order's authoritative restaurant
+        if (!isUserInRestaurantScope(req.user, { restaurantName: existingOrder.restaurantName })) {
+            return res.status(403).json({
+                error: 'Forbidden',
+                message: 'Access denied: order belongs to another restaurant'
+            });
+        }
+
+        // Prevent ordinary updates from reassigning restaurant or ownership fields
+        if (restaurantName && restaurantName.trim().toLowerCase() !== existingOrder.restaurantName.toLowerCase()) {
+            return res.status(400).json({
+                error: 'Bad Request',
+                message: 'Reassigning order restaurant is not permitted'
+            });
+        }
+        if (email && email.trim().toLowerCase() !== existingOrder.email.toLowerCase()) {
+            return res.status(400).json({
+                error: 'Bad Request',
+                message: 'Reassigning order customer ownership email is not permitted'
+            });
         }
 
         // Format pickup time to HH:mm format
@@ -141,24 +170,21 @@ const updateorder = async (req, res, next) => {
         // Add colon between hours and minutes
         const finalTime = formattedPickupTime.slice(0, 2) + ':' + formattedPickupTime.slice(2);
 
+        // Update record while preserving authoritative restaurantName and email
         const updatedOrder = await RestaurantOrder.findByIdAndUpdate(
             id,
             {
-                restaurantName,
+                restaurantName: existingOrder.restaurantName,
                 itemsPurchased,
                 totalAmount: parseFloat(totalAmount.toFixed(2)),
                 fullName,
-                email,
+                email: existingOrder.email,
                 phoneNumber: formatPhoneNumber(phoneNumber),
                 pickupTime: finalTime,
                 modifiedAt: new Date()
             },
             { new: true }
         );
-
-        if (!updatedOrder) {
-            return res.status(404).json({ message: "Order not found" });
-        }
 
         return res.status(200).json(updatedOrder);
     } catch (err) {
@@ -172,12 +198,20 @@ const deleteorder = async (req, res, next) => {
     const id = req.params.id;
 
     try {
-        const deletedOrder = await RestaurantOrder.findByIdAndDelete(id);
-        
-        if (!deletedOrder) {
+        const currentOrder = await RestaurantOrder.findById(id);
+        if (!currentOrder) {
             return res.status(404).json({ message: "Order not found" });
         }
 
+        // Scope verification: admin can only delete within assigned restaurant
+        if (!isUserInRestaurantScope(req.user, { restaurantName: currentOrder.restaurantName })) {
+            return res.status(403).json({
+                error: "Forbidden",
+                message: "Access denied: order is outside your assigned restaurant scope."
+            });
+        }
+
+        await RestaurantOrder.findByIdAndDelete(id);
         return res.status(200).json({ message: "Order deleted successfully" });
     } catch (err) {
         console.error('Error deleting order:', err);
@@ -191,6 +225,20 @@ const updateOrderStatus = async (req, res, next) => {
   const { status } = req.body;
 
   try {
+    // First get the current order to verify target existence and tenant scope
+    const currentOrder = await RestaurantOrder.findById(id);
+    if (!currentOrder) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    // Scope verification: admin can only update within assigned restaurant
+    if (!isUserInRestaurantScope(req.user, { restaurantName: currentOrder.restaurantName })) {
+      return res.status(403).json({
+        error: "Forbidden",
+        message: "Access denied: order is outside your assigned restaurant scope."
+      });
+    }
+
     // Accept 'picked up' as a valid status
     const validStatuses = ['confirmed', 'processing', 'ready for pickup', 'picked up'];
 
@@ -199,13 +247,7 @@ const updateOrderStatus = async (req, res, next) => {
       return res.status(400).json({ message: "Invalid status value" });
     }
 
-    // First get the current order to have all details for notification
-    const currentOrder = await RestaurantOrder.findById(id);
-    if (!currentOrder) {
-      return res.status(404).json({ message: "Order not found" });
-    }
-
-    // Update the order status
+    // Update only status and modifiedAt to prevent ownership/restaurant tampering
     const updatedOrder = await RestaurantOrder.findByIdAndUpdate(
       id,
       { 
@@ -215,18 +257,16 @@ const updateOrderStatus = async (req, res, next) => {
       { new: true }
     );
 
-    // Only send WhatsApp notification for ready for pickup
+    // Only send WhatsApp notification for ready for pickup when authorized
     if (status === 'ready for pickup') {
       console.log(`Order ${id} marked as ready for pickup. Sending WhatsApp notification...`);
       try {
-        // Ensure phone number is properly formatted
         if (!updatedOrder.phoneNumber) {
           console.warn(`Order ${id} has no phone number. Cannot send WhatsApp notification.`);
         } else {
           console.log(`Sending notification to ${updatedOrder.phoneNumber}`);
           const notificationResult = await whatsappService.sendOrderReadyNotification(updatedOrder);
-          // Enhanced logging for debugging WhatsApp notification issues
-          if (notificationResult.success) {
+          if (notificationResult && notificationResult.success) {
             console.log('WhatsApp notification sent successfully:', notificationResult);
           } else {
             console.error('WhatsApp notification failed:', notificationResult);

@@ -1,6 +1,7 @@
 const Reservation = require('../models/reservationModel');
 const emailService = require('../services/emailService');
 const mongoose = require('mongoose');
+const { isUserInRestaurantScope } = require('../utils/restaurantMapping');
 
 // Create a new reservation
 exports.createReservation = async (req, res) => {
@@ -79,35 +80,82 @@ exports.getReservationsByRestaurant = async (req, res) => {
   }
 };
 
-// Update reservation details and set status to 'modified' (used when user modifies reservation)
+// Update reservation details and set status to 'modified'
 exports.modifyReservation = async (req, res) => {
   try {
     const { reservationId } = req.params;
-    const updates = req.body;
-    // Always set status to 'modified' on user modification
-    updates.status = 'modified';
-    updates.updatedAt = Date.now();
-    const reservation = await Reservation.findByIdAndUpdate(reservationId, updates, { new: true });
-    res.json(reservation);
+    const body = req.body || {};
+
+    const reservation = await Reservation.findById(reservationId);
+    if (!reservation) {
+      return res.status(404).json({ error: 'Reservation not found' });
+    }
+
+    // Verify caller's restaurant scope against target reservation's restaurant
+    if (!isUserInRestaurantScope(req.user, { restaurantId: reservation.restaurantId, restaurantName: reservation.restaurantName })) {
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: 'Access denied: reservation is outside your assigned restaurant scope.'
+      });
+    }
+
+    // Reject attempts to reassign restaurant scope or arbitrarily change status
+    if (body.restaurantId && String(body.restaurantId).trim() !== String(reservation.restaurantId).trim()) {
+      return res.status(400).json({ error: 'Bad Request', message: 'Cannot reassign reservation restaurant' });
+    }
+    if (body.restaurantName && body.restaurantName.trim().toLowerCase() !== (reservation.restaurantName || '').toLowerCase()) {
+      return res.status(400).json({ error: 'Bad Request', message: 'Cannot reassign reservation restaurant name' });
+    }
+    if (body.status && body.status !== 'modified' && body.status !== reservation.status) {
+      return res.status(400).json({ error: 'Bad Request', message: 'Cannot alter reservation status through generic modify endpoint' });
+    }
+
+    // Prevent tampering with ownership/system fields; use explicit allowlist only
+    const allowedUpdates = {};
+    if (body.date) allowedUpdates.date = new Date(body.date);
+    if (body.time) allowedUpdates.time = body.time;
+    if (body.partySize) allowedUpdates.partySize = Number(body.partySize);
+    if (body.customerPhone) allowedUpdates.customerPhone = body.customerPhone;
+    if (body.customerName) allowedUpdates.customerName = body.customerName;
+
+    allowedUpdates.status = 'modified';
+    allowedUpdates.updatedAt = Date.now();
+
+    const updatedReservation = await Reservation.findByIdAndUpdate(reservationId, allowedUpdates, { new: true });
+    return res.json(updatedReservation);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 };
 
-// Update reservation status (e.g., cancel, complete)
+// Update reservation status (administrative action: approve, cancel, complete)
 exports.updateReservationStatus = async (req, res) => {
   try {
     const { reservationId } = req.params;
     const { status } = req.body;
-    
-    // If status is 'cancelled', delete the reservation instead of updating it
+
+    const validStatuses = ['booked', 'approved', 'cancelled', 'completed', 'modified'];
+    if (!status || !validStatuses.includes(status)) {
+      return res.status(400).json({ error: 'Bad Request', message: 'Invalid reservation status' });
+    }
+
+    const reservation = await Reservation.findById(reservationId);
+    if (!reservation) {
+      return res.status(404).json({ error: 'Reservation not found' });
+    }
+
+    // Scope check: caller must be authorized for this reservation's restaurant
+    if (!isUserInRestaurantScope(req.user, { restaurantId: reservation.restaurantId, restaurantName: reservation.restaurantName })) {
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: 'Access denied: reservation is outside your assigned restaurant scope.'
+      });
+    }
+
+    // If status is 'cancelled', delete the reservation
     if (status === 'cancelled') {
       console.log(`[Reservation] Deleting cancelled reservation: ${reservationId}`);
       const deletedReservation = await Reservation.findByIdAndDelete(reservationId);
-      
-      if (!deletedReservation) {
-        return res.status(404).json({ error: 'Reservation not found' });
-      }
       
       return res.json({ 
         message: 'Reservation cancelled and deleted successfully',
@@ -115,19 +163,15 @@ exports.updateReservationStatus = async (req, res) => {
         status: 'cancelled'
       });
     }
-    
+
     // For other statuses, update as normal
-    const reservation = await Reservation.findByIdAndUpdate(
+    const updatedReservation = await Reservation.findByIdAndUpdate(
       reservationId,
       { status, updatedAt: Date.now() },
       { new: true }
     );
-    
-    if (!reservation) {
-      return res.status(404).json({ error: 'Reservation not found' });
-    }
-    
-    res.json(reservation);
+
+    res.json(updatedReservation);
   } catch (err) {
     console.error('[Reservation Error]', err);
     res.status(500).json({ error: err.message });
