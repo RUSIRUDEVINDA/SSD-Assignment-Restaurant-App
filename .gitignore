@@ -1,2 +1,4 @@
 node_modules
 .env
+docs/security/member2-before-findings.md
+/evidence

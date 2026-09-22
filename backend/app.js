@@ -1,4 +1,16 @@
-//username->admin  password->1234
+const path = require("path");
+const dotenv = require("dotenv");
+
+// Load .env before any modules that read environment variables
+dotenv.config({ path: path.resolve(__dirname, ".env") });
+if (!process.env.MONGODB_URI) {
+  dotenv.config({ path: path.resolve(__dirname, "../.env") });
+}
+
+if (!process.env.MONGODB_URI) {
+  console.error("Fatal Error: MONGODB_URI is not defined in environment variables (.env).");
+  process.exit(1);
+}
 
 const express = require("express");
 const mongoose = require("mongoose");
@@ -37,9 +49,10 @@ app.get('/api/reservation-requests', reservationRequestController.getReservation
 app.get('/api/restaurant/:restaurantId/reservation-requests', reservationRequestController.getReservationRequestsByRestaurant);
 app.patch('/api/reservation-requests/:id', reservationRequestController.updateReservationRequestStatus);
 
-mongoose.connect("mongodb+srv://admin:**********@airportmanagementsystem.8nzgv.mongodb.net/test")
-.then(()=> console.log("Connected to MongoDB"))
-.then(()=>{
+mongoose.connect(process.env.MONGODB_URI)
+  .then(() => {
+    console.log("Connected to MongoDB:", mongoose.connection.name);
     app.listen(5000);
-})
-.catch((err)=>console.log((err)));
+  })
+  .catch((err) => console.log(err));
+
