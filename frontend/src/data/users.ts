@@ -70,18 +70,6 @@ export const users: User[] = [
   }
 ];
 
-// Demo logins
-export const demoLogins = [
-  { email: "ovindivimasha1015@gmail.com", password: "Ovindi123#" },
-  { email: "barista@admin.com", password: "Barista@123" },
-  { email: "pizzahut@admin.com", password: "Pizzahut@123" },
-  { email: "bk@admin.com", password: "Burgerking@123" },
-  { email: "coffeebean@admin.com", password: "Coffeebean@123" },
-  { email: "extea@admin.com", password: "Extea@123" },
-  { email: "palmstrip@admin.com", password: "Palmstrip@123" },
-  { email: "admin@aerox.com", password: "Admin@123" }
-];
-
 export const getUserByEmail = (email: string): User | undefined => {
   return users.find(user => user.email === email);
 };
