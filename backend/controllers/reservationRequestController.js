@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const ReservationRequest = require('../models/reservationRequestModel');
 const Reservation = require('../models/reservationModel');
+const { isUserInRestaurantScope } = require('../utils/restaurantMapping');
 
 // Create a new modification or cancellation request
 exports.createReservationRequest = async (req, res) => {
@@ -104,45 +105,76 @@ exports.getReservationRequestsByRestaurant = async (req, res) => {
 // Approve or reject a reservation request
 exports.updateReservationRequestStatus = async (req, res) => {
   try {
-    const { requestId } = req.params;
+    const requestId = req.params.requestId || req.params.id;
     const { status } = req.body;
     
-    console.log(`[Reservation Request] Updating request ${requestId} to ${status}`);
-    
-    // Validate ObjectId
-    if (!mongoose.Types.ObjectId.isValid(requestId)) {
-      console.error(`[Reservation Request] Invalid ObjectId: ${requestId}`);
-      return res.status(400).json({ error: 'Invalid request ID format' });
+    if (!['approved', 'rejected'].includes(status)) {
+      return res.status(400).json({ error: 'Bad Request', message: 'Invalid status. Must be "approved" or "rejected".' });
     }
-    
-    const request = await ReservationRequest.findByIdAndUpdate(
-      requestId,
-      { status, updatedAt: Date.now() },
+
+    if (!mongoose.Types.ObjectId.isValid(requestId)) {
+      return res.status(400).json({ error: 'Bad Request', message: 'Invalid request ID format' });
+    }
+
+    const request = await ReservationRequest.findById(requestId);
+    if (!request) {
+      return res.status(404).json({ error: 'Not Found', message: 'Reservation request not found' });
+    }
+
+    // Prevent repeated or contradictory processing
+    if (request.status !== 'pending') {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: `Reservation request has already been processed with status: ${request.status}`
+      });
+    }
+
+    // Resolve parent reservation to verify restaurant scope authoritatively
+    const reservation = await Reservation.findById(request.reservationId);
+    if (!reservation) {
+      return res.status(404).json({
+        error: 'Not Found',
+        message: 'Parent reservation not found; operation denied without mutation.'
+      });
+    }
+
+    // Scope verification against parent reservation's restaurant
+    if (!isUserInRestaurantScope(req.user, { restaurantId: reservation.restaurantId, restaurantName: reservation.restaurantName })) {
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: 'Access denied: parent reservation belongs to a different restaurant.'
+      });
+    }
+
+    // Concurrency-safe atomic state transition: only transition if still pending
+    const updatedRequest = await ReservationRequest.findOneAndUpdate(
+      { _id: requestId, status: 'pending' },
+      { $set: { status, updatedAt: Date.now() } },
       { new: true }
     );
-    
-    if (!request) {
-      console.error(`[Reservation Request] Request not found: ${requestId}`);
-      return res.status(404).json({ error: 'Request not found' });
+
+    if (!updatedRequest) {
+      return res.status(409).json({
+        error: 'Conflict',
+        message: 'Reservation request was already processed concurrently'
+      });
     }
-    
-    console.log(`[Reservation Request] Request updated:`, request);
-    
-    // If approved and it's a cancellation, DELETE the reservation from the database
-    if (request && status === 'approved' && request.type === 'cancellation') {
-      console.log(`[Reservation Request] Deleting reservation: ${request.reservationId}`);
-      await Reservation.findByIdAndDelete(request.reservationId);
+
+    // If approved and it's a cancellation, delete the reservation from the database
+    if (status === 'approved' && updatedRequest.type === 'cancellation') {
+      console.log(`[Reservation Request] Deleting reservation: ${updatedRequest.reservationId}`);
+      await Reservation.findByIdAndDelete(updatedRequest.reservationId);
     }
-    
-    // If approved and it's a modification, set status to 'approved' (do NOT modify reservation yet)
-    if (request && status === 'approved' && request.type === 'modification') {
-      await Reservation.findByIdAndUpdate(request.reservationId, {
+
+    // If approved and it's a modification, set parent reservation status to 'approved' (matching original workflow)
+    if (status === 'approved' && updatedRequest.type === 'modification') {
+      await Reservation.findByIdAndUpdate(updatedRequest.reservationId, {
         status: 'approved',
         updatedAt: Date.now()
       });
     }
-    
-    res.json(request);
+
+    res.status(200).json(updatedRequest);
   } catch (err) {
     console.error('[Reservation Request Error]', err);
     res.status(500).json({ error: err.message });

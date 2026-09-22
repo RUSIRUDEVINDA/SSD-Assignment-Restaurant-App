@@ -44,8 +44,8 @@ if (!process.env.MONGODB_URI) {
 }
 
 mongoose.connect(process.env.MONGODB_URI)
-.then(()=> console.log("Connected to MongoDB"))
-.then(()=>{
+  .then(() => console.log("Connected to MongoDB"))
+  .then(() => {
     app.listen(process.env.PORT || 5000);
-})
-.catch((err)=>console.log((err)));
+  })
+  .catch((err) => console.log((err)));
