@@ -1,15 +1,4 @@
-const path = require("path");
-const dotenv = require("dotenv");
-
-// Load environment variables: prefer project-level .env then backend/.env
-dotenv.config({ path: path.resolve(__dirname, "../.env") });
-dotenv.config({ path: path.resolve(__dirname, ".env") });
-
-if (!process.env.MONGODB_URI) {
-  console.error("Fatal Error: MONGODB_URI is not defined in environment variables (.env).");
-  process.exit(1);
-}
-
+require("dotenv").config();
 
 const express = require("express");
 const mongoose = require("mongoose");
@@ -17,7 +6,6 @@ const cors = require('cors');
 const orderRouter = require("./routes/restaurantOrderRoute");
 const reservationRouter = require("./routes/reservationRoute");
 const restaurantRouter = require("./routes/restaurantRoute");
-const reservationRequestController = require('./controllers/reservationRequestController');
 
 const app = express();
 
@@ -42,16 +30,14 @@ app.use("/restaurant", orderRouter);
 app.use("/restaurant", restaurantRouter);
 app.use("/api", reservationRouter);
 
-// Reservation Request Routes
-app.post('/api/reservation-requests', reservationRequestController.createReservationRequest);
-app.get('/api/reservation-requests', reservationRequestController.getReservationRequestsByUserEmail);
-app.get('/api/restaurant/:restaurantId/reservation-requests', reservationRequestController.getReservationRequestsByRestaurant);
-app.patch('/api/reservation-requests/:id', reservationRequestController.updateReservationRequestStatus);
+if (!process.env.MONGODB_URI) {
+  console.error("MONGODB_URI environment variable is required");
+  process.exit(1);
+}
 
 mongoose.connect(process.env.MONGODB_URI)
+  .then(() => console.log("Connected to MongoDB"))
   .then(() => {
-    console.log("Connected to MongoDB:", mongoose.connection.name);
     app.listen(process.env.PORT || 5000);
   })
-  .catch((err) => console.log(err));
-
+  .catch((err) => console.log((err)));
