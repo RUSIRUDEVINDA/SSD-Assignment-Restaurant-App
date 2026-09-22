@@ -1,5 +1,6 @@
 const OrderRequest = require('../models/orderRequestModel');
 const RestaurantOrder = require('../models/restaurantOrderModel');
+const { isUserInRestaurantScope } = require('../utils/restaurantMapping');
 
 // Create a new order modification/cancellation request
 const createOrderRequest = async (req, res) => {
@@ -53,20 +54,66 @@ const getOrderRequestsByUser = async (req, res) => {
 // Admin approves/rejects a request
 const updateOrderRequestStatus = async (req, res) => {
     try {
-        const { requestId } = req.params;
+        const requestId = req.params.requestId || req.params.id;
         const { status, adminResponse } = req.body;
+
         if (!['approved', 'rejected'].includes(status)) {
-            return res.status(400).json({ message: 'Invalid status' });
+            return res.status(400).json({ error: 'Bad Request', message: 'Invalid status. Must be "approved" or "rejected".' });
         }
-        const request = await OrderRequest.findByIdAndUpdate(
-            requestId,
-            { status, adminResponse, updatedAt: new Date() },
+
+        const request = await OrderRequest.findById(requestId);
+        if (!request) {
+            return res.status(404).json({ error: 'Not Found', message: 'Order request not found' });
+        }
+
+        // Prevent repeated or contradictory processing
+        if (request.status !== 'pending') {
+            return res.status(400).json({
+                error: 'Bad Request',
+                message: `Order request has already been processed with status: ${request.status}`
+            });
+        }
+
+        // Resolve parent order to verify restaurant scope authoritatively
+        const parentOrder = await RestaurantOrder.findById(request.orderId);
+        if (!parentOrder) {
+            return res.status(404).json({
+                error: 'Not Found',
+                message: 'Parent order for this request could not be found; operation denied without mutation.'
+            });
+        }
+
+        // Scope verification against parent order's restaurant
+        if (!isUserInRestaurantScope(req.user, { restaurantName: parentOrder.restaurantName })) {
+            return res.status(403).json({
+                error: 'Forbidden',
+                message: 'Access denied: parent order belongs to a different restaurant.'
+            });
+        }
+
+        // Concurrency-safe atomic state transition: only transition if still pending
+        const updateFields = {
+            status,
+            updatedAt: new Date()
+        };
+        if (adminResponse) {
+            updateFields.adminResponse = adminResponse;
+        }
+
+        const updatedRequest = await OrderRequest.findOneAndUpdate(
+            { _id: requestId, status: 'pending' },
+            { $set: updateFields },
             { new: true }
         );
-        if (!request) {
-            return res.status(404).json({ message: 'Request not found' });
+
+        if (!updatedRequest) {
+            return res.status(409).json({
+                error: 'Conflict',
+                message: 'Order request was already processed concurrently'
+            });
         }
-        return res.status(200).json(request);
+
+        return res.status(200).json(updatedRequest);
     } catch (err) {
         console.error('Error updating order request:', err);
         return res.status(500).json({ message: 'Failed to update order request' });

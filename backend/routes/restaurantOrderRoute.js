@@ -1,8 +1,6 @@
 const express = require("express");
 const router = express.Router();
-//insert model
-const order = require("../models/restaurantOrderModel");
-//insert controller
+
 const { 
   getAllOrders, 
   addOrders, 
@@ -14,38 +12,58 @@ const {
   updateOrderStatus
 } = require("../controllers/restaurantOrderController");
 
-// Order Request controller
 const orderRequestController = require("../controllers/orderRequestController");
 
-//get all orders
-router.get("/orders", getAllOrders);
+const {
+  requireRole,
+  requireRestaurantScopeByName
+} = require("../middleware/authorization");
 
-//get orders by email
-router.get("/orders/email/:email", getOrdersByEmail);
+// Global orders list - restricted to mainAdmin
+router.get("/orders", requireRole("mainAdmin"), getAllOrders);
 
-//get orders by restaurant name
-router.get("/orders/restaurant/:restaurantName", getOrdersByRestaurant);
+// Orders by restaurant - restricted to authorized restaurant admin or mainAdmin
+router.get(
+  "/orders/restaurant/:restaurantName",
+  requireRole("admin", "mainAdmin"),
+  requireRestaurantScopeByName("restaurantName"),
+  getOrdersByRestaurant
+);
 
-//add orders
+// Add orders (public / customer creation)
 router.post("/orders", addOrders);
 
-//get order by id
+// Customer order retrieval by email / id (V04 scope)
+router.get("/orders/email/:email", getOrdersByEmail);
 router.get("/orders/:id", getById);
 
-//update order details
-router.patch("/orders/:id", updateorder);
+// General order update - restricted to authorized restaurant admin or mainAdmin
+router.patch("/orders/:id", requireRole("admin", "mainAdmin"), updateorder);
 
-//update order status
-router.patch("/orders/status/:id", updateOrderStatus);
+// Order status update - restricted to authorized restaurant admin or mainAdmin
+router.patch("/orders/status/:id", requireRole("admin", "mainAdmin"), updateOrderStatus);
 
-//delete order
-router.delete("/orders/:id", deleteorder);
+// Order deletion - restricted to authorized restaurant admin or mainAdmin
+router.delete("/orders/:id", requireRole("admin", "mainAdmin"), deleteorder);
 
-// Order modification/cancellation requests
+// Order request creation & customer listing
 router.post("/order-requests", orderRequestController.createOrderRequest);
-router.get("/order-requests/restaurant/:restaurantName", orderRequestController.getOrderRequestsByRestaurant);
 router.get("/order-requests/user/:userEmail", orderRequestController.getOrderRequestsByUser);
-router.patch("/order-requests/:requestId", orderRequestController.updateOrderRequestStatus);
+
+// Order requests for a restaurant - restricted to authorized restaurant admin or mainAdmin
+router.get(
+  "/order-requests/restaurant/:restaurantName",
+  requireRole("admin", "mainAdmin"),
+  requireRestaurantScopeByName("restaurantName"),
+  orderRequestController.getOrderRequestsByRestaurant
+);
+
+// Order request approval/rejection - restricted to authorized restaurant admin or mainAdmin
+router.patch(
+  "/order-requests/:requestId",
+  requireRole("admin", "mainAdmin"),
+  orderRequestController.updateOrderRequestStatus
+);
 
 //export
 module.exports = router;
