@@ -1,16 +1,15 @@
 const path = require("path");
 const dotenv = require("dotenv");
 
-// Load .env before any modules that read environment variables
+// Load environment variables: prefer project-level .env then backend/.env
+dotenv.config({ path: path.resolve(__dirname, "../.env") });
 dotenv.config({ path: path.resolve(__dirname, ".env") });
-if (!process.env.MONGODB_URI) {
-  dotenv.config({ path: path.resolve(__dirname, "../.env") });
-}
 
 if (!process.env.MONGODB_URI) {
   console.error("Fatal Error: MONGODB_URI is not defined in environment variables (.env).");
   process.exit(1);
 }
+
 
 const express = require("express");
 const mongoose = require("mongoose");
@@ -52,7 +51,7 @@ app.patch('/api/reservation-requests/:id', reservationRequestController.updateRe
 mongoose.connect(process.env.MONGODB_URI)
   .then(() => {
     console.log("Connected to MongoDB:", mongoose.connection.name);
-    app.listen(5000);
+    app.listen(process.env.PORT || 5000);
   })
   .catch((err) => console.log(err));
 
