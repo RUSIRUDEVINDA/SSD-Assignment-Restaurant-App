@@ -1,4 +1,12 @@
 require("dotenv").config();
+const dns = require("node:dns");
+
+// Configure reliable DNS servers to stabilize MongoDB Atlas SRV lookups on Windows
+try {
+  dns.setServers(['8.8.8.8', '1.1.1.1']);
+} catch (e) {
+  // Fall back to system DNS
+}
 
 const express = require("express");
 const mongoose = require("mongoose");
@@ -6,8 +14,8 @@ const cors = require('cors');
 const orderRouter = require("./routes/restaurantOrderRoute");
 const reservationRouter = require("./routes/reservationRoute");
 const restaurantRouter = require("./routes/restaurantRoute");
-const reservationRequestController = require('./controllers/reservationRequestController');
-const { requireAuth } = require('./middleware/authMiddleware');
+const userRouter = require("./routes/userRoute");
+const { requireAuth, authErrorHandler } = require('./middleware/authMiddleware');
 
 const app = express();
 
@@ -31,12 +39,10 @@ app.options('/restaurant/*', (req, res) => {
 app.use("/restaurant", orderRouter);
 app.use("/restaurant", restaurantRouter);
 app.use("/api", reservationRouter);
+app.use("/api", userRouter);
 
-// Reservation Request Routes
-app.post('/api/reservation-requests', requireAuth, reservationRequestController.createReservationRequest);
-app.get('/api/reservation-requests', requireAuth, reservationRequestController.getReservationRequestsByUserEmail);
-app.get('/api/restaurant/:restaurantId/reservation-requests', requireAuth, reservationRequestController.getReservationRequestsByRestaurant);
-app.patch('/api/reservation-requests/:id', requireAuth, reservationRequestController.updateReservationRequestStatus);
+// Authentication Error Handler
+app.use(authErrorHandler);
 
 if (!process.env.MONGODB_URI) {
   console.error("MONGODB_URI environment variable is required");

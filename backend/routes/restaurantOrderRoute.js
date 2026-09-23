@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 
 const { requireAuth } = require("../middleware/authMiddleware");
+const { loadUserIdentity } = require("../middleware/loadUserIdentity");
 
 const {
   requireRole,
@@ -25,6 +26,7 @@ const orderRequestController = require("../controllers/orderRequestController");
 router.get(
   "/orders",
   requireAuth,
+  loadUserIdentity,
   requireRole("mainAdmin"),
   getAllOrders
 );
@@ -33,6 +35,7 @@ router.get(
 router.get(
   "/orders/restaurant/:restaurantName",
   requireAuth,
+  loadUserIdentity,
   requireRole("admin", "mainAdmin"),
   requireRestaurantScopeByName("restaurantName"),
   getOrdersByRestaurant
@@ -64,6 +67,7 @@ router.get(
 router.patch(
   "/orders/:id",
   requireAuth,
+  loadUserIdentity,
   requireRole("admin", "mainAdmin"),
   updateorder
 );
@@ -72,6 +76,7 @@ router.patch(
 router.patch(
   "/orders/status/:id",
   requireAuth,
+  loadUserIdentity,
   requireRole("admin", "mainAdmin"),
   updateOrderStatus
 );
@@ -80,6 +85,7 @@ router.patch(
 router.delete(
   "/orders/:id",
   requireAuth,
+  loadUserIdentity,
   requireRole("admin", "mainAdmin"),
   deleteorder
 );
@@ -102,6 +108,7 @@ router.get(
 router.get(
   "/order-requests/restaurant/:restaurantName",
   requireAuth,
+  loadUserIdentity,
   requireRole("admin", "mainAdmin"),
   requireRestaurantScopeByName("restaurantName"),
   orderRequestController.getOrderRequestsByRestaurant
@@ -111,6 +118,7 @@ router.get(
 router.patch(
   "/order-requests/:requestId",
   requireAuth,
+  loadUserIdentity,
   requireRole("admin", "mainAdmin"),
   orderRequestController.updateOrderRequestStatus
 );
