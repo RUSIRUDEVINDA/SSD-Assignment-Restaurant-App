@@ -1,0 +1,14 @@
+rules:
+  - id: v03-unprotected-admin-patch-route
+    message: >
+      Privileged PATCH route appears to call its handler directly
+      without authentication or authorization middleware.
+    severity: ERROR
+    languages:
+      - javascript
+
+    patterns:
+      - pattern: $ROUTER.patch($PATH, $HANDLER)
+      - metavariable-regex:
+          metavariable: $HANDLER
+          regex: "(updateOrderStatus|updateOrderRequestStatus|updateReservationRequestStatus)"
