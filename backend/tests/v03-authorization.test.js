@@ -20,7 +20,27 @@ const ReservationRequest = require('../models/reservationRequestModel');
 const whatsappService = require('../services/whatsappService');
 const { isUserInRestaurantScope, getRestaurantNameById, getRestaurantIdByName } = require('../utils/restaurantMapping');
 
-// Routers under test
+// Test environment authentication harness
+// Synthetic identity injection exists exclusively in test files
+const authMiddleware = require('../middleware/authMiddleware');
+const realRequireAuth = authMiddleware.requireAuth;
+authMiddleware.requireAuth = (req, res, next) => {
+  if (req.user) {
+    return next();
+  }
+  return realRequireAuth(req, res, next);
+};
+
+const loadUserIdentityModule = require('../middleware/loadUserIdentity');
+const realLoadUserIdentity = loadUserIdentityModule.loadUserIdentity;
+loadUserIdentityModule.loadUserIdentity = (req, res, next) => {
+  if (req.user) {
+    return next();
+  }
+  return realLoadUserIdentity(req, res, next);
+};
+
+// Routers under test (imported after requireAuth test harness setup)
 const orderRouter = require('../routes/restaurantOrderRoute');
 const reservationRouter = require('../routes/reservationRoute');
 
@@ -49,6 +69,9 @@ function createTestApp() {
 
   app.use('/restaurant', orderRouter);
   app.use('/api', reservationRouter);
+
+  // Mount authentication error handler under test
+  app.use(authMiddleware.authErrorHandler);
 
   return app;
 }
@@ -669,3 +692,39 @@ test('20. Already-processed requests are rejected and notification permissions a
   assert.strictEqual(notificationsSent.length, 1);
   assert.strictEqual(notificationsSent[0].phoneNumber, '0770000001');
 });
+
+test('21. authErrorHandler returns generic JSON 401, sets headers, and passes non-auth errors through', () => {
+  const { authErrorHandler } = authMiddleware;
+
+  // 1. Authentication error handling
+  let statusCode = null;
+  let jsonResponse = null;
+  let headersSet = null;
+  let nextCalledWith = null;
+
+  const mockReq = { method: 'POST', originalUrl: '/api/test' };
+  const mockRes = {
+    status: (code) => { statusCode = code; return mockRes; },
+    json: (body) => { jsonResponse = body; return mockRes; },
+    set: (headers) => { headersSet = headers; return mockRes; }
+  };
+  const mockErr = new Error('Token verification failed');
+  mockErr.name = 'UnauthorizedError';
+  mockErr.status = 401;
+  mockErr.headers = { 'WWW-Authenticate': 'Bearer error="invalid_token"' };
+
+  authErrorHandler(mockErr, mockReq, mockRes, (err) => { nextCalledWith = err; });
+
+  assert.strictEqual(statusCode, 401);
+  assert.deepStrictEqual(jsonResponse, { error: 'Unauthorized', message: 'Authentication required' });
+  assert.deepStrictEqual(headersSet, { 'WWW-Authenticate': 'Bearer error="invalid_token"' });
+  assert.strictEqual(nextCalledWith, null);
+
+  // 2. Non-authentication error passes through to next(err)
+  let nonAuthPassed = null;
+  const nonAuthErr = new Error('Database connection failed');
+  nonAuthErr.status = 500;
+  authErrorHandler(nonAuthErr, mockReq, mockRes, (err) => { nonAuthPassed = err; });
+  assert.strictEqual(nonAuthPassed, nonAuthErr);
+});
+

@@ -1,21 +1,21 @@
 import React, { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { LogIn, UserPlus, ShieldCheck } from "lucide-react";
+import { LogIn, UserPlus, ShieldCheck, AlertCircle, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 
 const Login = () => {
-  const { login, signup, isAuthenticated, user, isLoading } = useAuth();
+  const { login, signup, logout, isAuthenticated, user, isLoading, error } = useAuth();
   const navigate = useNavigate();
 
-  // Redirect if already authenticated
+  // Redirect if already authenticated and application profile is loaded
   useEffect(() => {
-    if (isAuthenticated) {
-      if (user?.type === "mainAdmin") {
+    if (isAuthenticated && user) {
+      if (user.type === "mainAdmin") {
         navigate("/admin");
-      } else if (user?.type === "admin" && user?.restaurantId) {
+      } else if (user.type === "admin" && user.restaurantId) {
         navigate(`/admin/restaurant/${user.restaurantId}`);
       } else {
         navigate("/profile");
@@ -44,9 +44,30 @@ const Login = () => {
               </div>
 
               <h1 className="text-2xl font-bold text-aerox-blue mb-2">Secure Authentication</h1>
-              <p className="text-gray-500 text-sm mb-8">
+              <p className="text-gray-500 text-sm mb-6">
                 Sign in or register securely using Auth0 OpenID Connect. Your credentials are verified externally and never handled or stored by this application.
               </p>
+
+              {/* Display application profile authorization error (unprovisioned, inactive, etc.) */}
+              {error && (
+                <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-left flex items-start gap-3">
+                  <AlertCircle className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
+                  <div className="text-xs text-red-700">
+                    <p className="font-semibold text-red-800 mb-1">Authorization Notice</p>
+                    <p>{error}</p>
+                    {isAuthenticated && (
+                      <Button
+                        type="button"
+                        variant="link"
+                        onClick={logout}
+                        className="p-0 h-auto text-xs text-red-800 underline font-medium mt-2 flex items-center gap-1"
+                      >
+                        <LogOut className="h-3 w-3" /> Sign out of this Auth0 account
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              )}
 
               <div className="space-y-4">
                 <Button
@@ -56,7 +77,7 @@ const Login = () => {
                   className="w-full bg-gradient-to-r from-aerox-blue to-aerox-blue/90 hover:from-aerox-blue/90 hover:to-aerox-blue text-white px-8 py-3 rounded-lg shadow-lg hover:shadow-xl transition-all duration-300 flex items-center justify-center gap-2"
                 >
                   <LogIn className="h-5 w-5" />
-                  Continue with Auth0 (Sign In)
+                  {isLoading ? "Verifying Profile..." : "Continue with Auth0 (Sign In)"}
                 </Button>
 
                 <Button

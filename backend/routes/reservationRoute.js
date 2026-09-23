@@ -5,6 +5,7 @@ const reservationController = require('../controllers/reservationController');
 const reservationRequestController = require('../controllers/reservationRequestController');
 
 const { requireAuth } = require('../middleware/authMiddleware');
+const { loadUserIdentity } = require('../middleware/loadUserIdentity');
 
 const {
   requireRole,
@@ -24,6 +25,7 @@ router.post(
 router.get(
   '/restaurant/:restaurantId/reservations',
   requireAuth,
+  loadUserIdentity,
   requireRole('admin', 'mainAdmin'),
   requireRestaurantScopeById('restaurantId'),
   reservationController.getReservationsByRestaurant
@@ -48,6 +50,7 @@ router.get(
 router.patch(
   '/reservations/:reservationId/modify',
   requireAuth,
+  loadUserIdentity,
   requireRole('admin', 'mainAdmin'),
   reservationController.modifyReservation
 );
@@ -56,12 +59,14 @@ router.patch(
 router.patch(
   '/reservations/:reservationId',
   requireAuth,
+  loadUserIdentity,
   requireRole('admin', 'mainAdmin'),
   reservationController.updateReservationStatus
 );
 
 // Reservation request endpoints
 
+// Create reservation request
 router.post(
   '/reservation-requests',
   requireAuth,
@@ -78,6 +83,7 @@ router.post(
 router.get(
   '/restaurant/:restaurantId/reservation-requests',
   requireAuth,
+  loadUserIdentity,
   requireRole('admin', 'mainAdmin'),
   requireRestaurantScopeById('restaurantId'),
   reservationRequestController.getReservationRequestsByRestaurant
@@ -94,6 +100,7 @@ router.get(
 router.patch(
   '/reservation-requests/:requestId',
   requireAuth,
+  loadUserIdentity,
   requireRole('admin', 'mainAdmin'),
   reservationRequestController.updateReservationRequestStatus
 );

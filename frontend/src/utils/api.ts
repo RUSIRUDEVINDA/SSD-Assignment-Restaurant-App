@@ -25,15 +25,25 @@ export const getAuthHeaders = async (explicitToken?: string): Promise<Record<str
   return {};
 };
 
+/**
+ * Helper to determine whether a request targets the backend API origin.
+ * Uses WHATWG URL parsing and exact origin comparison to prevent token leakage
+ * to untrusted third-party origins or loose prefix matches.
+ */
+export const isBackendTarget = (url?: string, baseURL?: string): boolean => {
+  if (!url) return false;
+  try {
+    const backendOrigin = new URL(API_URL, window.location.origin).origin;
+    const targetUrl = new URL(url, baseURL || window.location.origin);
+    return targetUrl.origin === backendOrigin;
+  } catch {
+    return false;
+  }
+};
+
 // Global axios request interceptor to automatically attach Bearer token to backend API requests
 axios.interceptors.request.use(async (config) => {
-  const isApiTarget = config.url && (
-    config.url.startsWith(API_URL) ||
-    config.url.startsWith('/api') ||
-    config.url.startsWith('http://localhost:5000')
-  );
-
-  if (isApiTarget && globalTokenGetter && !config.headers.Authorization) {
+  if (isBackendTarget(config.url, config.baseURL) && globalTokenGetter && !config.headers.Authorization) {
     try {
       const token = await globalTokenGetter();
       if (token) {
@@ -45,6 +55,22 @@ axios.interceptors.request.use(async (config) => {
   }
   return config;
 });
+
+export interface BackendProfile {
+  id: string;
+  role: 'customer' | 'admin' | 'mainAdmin';
+  restaurantId?: string;
+  displayName?: string;
+}
+
+/**
+ * Explicitly fetches current user profile from backend GET /api/me
+ */
+export const getMyProfile = async (explicitToken?: string): Promise<BackendProfile> => {
+  const headers = await getAuthHeaders(explicitToken);
+  const response = await axios.get<BackendProfile>(`${API_URL}/api/me`, { headers });
+  return response.data;
+};
 
 /**
  * Fetch a specific reservation by its ID
