@@ -28,4 +28,39 @@ const requireAuth = auth({
   tokenSigningAlg: "RS256",
 });
 
-module.exports = { requireAuth };
+/**
+ * Authentication Error Handler Middleware
+ *
+ * Catches JWT/OAuth2 authentication errors from express-oauth2-jwt-bearer,
+ * logs detailed diagnostic information to the server logs for auditing/debugging,
+ * and returns a sanitized, generic JSON 401 response without leaking internal error details.
+ */
+const authErrorHandler = (err, req, res, next) => {
+  if (
+    err.name === "UnauthorizedError" ||
+    err.name === "InvalidTokenError" ||
+    err.status === 401 ||
+    err.statusCode === 401
+  ) {
+    console.error(`[Authentication Error] ${req.method} ${req.originalUrl || req.url}:`, {
+      name: err.name,
+      code: err.code,
+      message: err.message,
+      headers: err.headers,
+      stack: err.stack,
+    });
+
+    if (err.headers) {
+      res.set(err.headers);
+    }
+
+    return res.status(401).json({
+      error: "Unauthorized",
+      message: "Authentication required",
+    });
+  }
+
+  next(err);
+};
+
+module.exports = { requireAuth, authErrorHandler };
