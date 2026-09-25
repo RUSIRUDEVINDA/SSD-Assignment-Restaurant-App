@@ -33,7 +33,7 @@ exports.createReservationRequest = async (req, res) => {
       });
     } catch (err) {
       console.error('[Reservation Request] Error finding reservation:', err);
-      return res.status(404).json({ error: 'Invalid reservation ID format' });
+      return res.status(400).json({ error: 'Invalid reservation ID' });
     }
     
     const request = new ReservationRequest({
@@ -54,7 +54,13 @@ exports.createReservationRequest = async (req, res) => {
     res.status(201).json(request);
   } catch (err) {
     console.error('[Reservation Request Error]', err);
-    res.status(500).json({ error: err.message });
+    if (err.name === 'CastError') {
+      return res.status(400).json({ error: 'Invalid reservation ID' });
+    }
+    if (err.name === 'ValidationError') {
+      return res.status(400).json({ error: 'Invalid request data' });
+    }
+    res.status(500).json({ error: 'Internal server error' });
   }
 };
 
@@ -98,7 +104,10 @@ exports.getReservationRequestsByRestaurant = async (req, res) => {
     res.json(requests);
   } catch (err) {
     console.error('[Reservation Request Error]', err);
-    res.status(500).json({ error: err.message });
+    if (err.name === 'CastError') {
+      return res.status(400).json({ error: 'Invalid restaurant ID' });
+    }
+    res.status(500).json({ error: 'Internal server error' });
   }
 };
 
@@ -177,7 +186,10 @@ exports.updateReservationRequestStatus = async (req, res) => {
     res.status(200).json(updatedRequest);
   } catch (err) {
     console.error('[Reservation Request Error]', err);
-    res.status(500).json({ error: err.message });
+    if (err.name === 'CastError') {
+      return res.status(400).json({ error: 'Invalid request ID' });
+    }
+    res.status(500).json({ error: 'Internal server error' });
   }
 };
 
@@ -225,6 +237,6 @@ exports.getReservationRequestsByUserEmail = async (req, res) => {
     res.json(requests);
   } catch (err) {
     console.error('[Reservation Request Error]', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 };

@@ -16,6 +16,7 @@ const reservationRouter = require("./routes/reservationRoute");
 const restaurantRouter = require("./routes/restaurantRoute");
 const userRouter = require("./routes/userRoute");
 const { requireAuth, authErrorHandler } = require('./middleware/authMiddleware');
+const { errorHandler } = require('./middleware/errorHandler');
 
 const app = express();
 
@@ -43,6 +44,9 @@ app.use("/api", userRouter);
 
 // Authentication Error Handler
 app.use(authErrorHandler);
+
+// Centralized Application Error Handler (V04)
+app.use(errorHandler);
 
 if (!process.env.MONGODB_URI) {
   console.error("MONGODB_URI environment variable is required");
