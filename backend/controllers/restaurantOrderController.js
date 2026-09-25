@@ -111,6 +111,7 @@ const getOrdersByRestaurant = async (req, res, next) => {
         const orders = await RestaurantOrder.find({ restaurantName });
         return res.status(200).json(orders);
     } catch (err) {
+        console.error('Error fetching orders by restaurant:', err);
         return res.status(500).json({ message: "Failed to fetch orders by restaurant" });
     }
 };
