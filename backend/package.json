@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "app.js",
   "scripts": {
-    "test": "node --test tests/v03-authorization.test.js tests/v03-identity-integration.test.js",
+    "test": "node --test tests/v03-authorization.test.js tests/v03-identity-integration.test.js tests/v06-price-tampering.test.js",
     "provision": "node scripts/provision-user.js",
     "start": "nodemon app.js",
     "dev": "nodemon app.js"

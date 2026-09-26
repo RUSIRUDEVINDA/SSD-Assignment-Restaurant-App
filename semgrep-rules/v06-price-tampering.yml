@@ -1,0 +1,17 @@
+rules:
+  - id: v06-untrusted-client-price-assignment
+    message: >
+      Directly extracting or trusting 'totalAmount' from req.body enables client-side
+      price tampering (OWASP Top 10:2021 A04: Insecure Design, CWE-472). Order totals and item
+      prices must be computed authoritatively on the server against a trusted catalog.
+    severity: ERROR
+    languages:
+      - javascript
+    patterns:
+      - pattern-either:
+          - pattern: |
+              const { ..., totalAmount, ... } = req.body
+          - pattern: |
+              let { ..., totalAmount, ... } = req.body
+          - pattern: |
+              $X = req.body.totalAmount
