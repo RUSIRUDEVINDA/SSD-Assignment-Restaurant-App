@@ -3,6 +3,7 @@ const whatsappService = require("../services/whatsappService");
 const emailService = require("../services/emailService");
 const { formatPhoneNumber } = require("../utils/phoneUtils");
 const { isUserInRestaurantScope } = require("../utils/restaurantMapping");
+const { validateAndPriceOrderItems } = require("../utils/menuCatalog");
 
 //data display
 const getAllOrders = async (req, res, next) => {
@@ -23,23 +24,33 @@ const addOrders = async (req, res, next) => {
         const {
             restaurantName,
             itemsPurchased,
-            totalAmount,
             fullName,
             email,
             phoneNumber,
             pickupTime
         } = req.body;
 
-        // Calculate total amount from items if not provided
-        if (!totalAmount) {
-            const calculatedTotal = itemsPurchased.reduce((sum, item) => sum + (Number(item.price) * Number(item.quantity)), 0);
-            totalAmount = calculatedTotal;
+        // Basic required field validation
+        if (!restaurantName || !itemsPurchased || !fullName || !phoneNumber || !pickupTime) {
+            return res.status(400).json({ message: "All fields are required" });
+        }
+
+        // Authoritative server-side pricing and quantity validation (OWASP A04 / CWE-472)
+        // Completely discards any client-supplied totalAmount or item.price
+        let pricedOrder;
+        try {
+            pricedOrder = validateAndPriceOrderItems(restaurantName, itemsPurchased);
+        } catch (validationErr) {
+            return res.status(validationErr.status || 400).json({
+                error: 'Bad Request',
+                message: validationErr.message
+            });
         }
 
         const orderData = {
-            restaurantName,
-            itemsPurchased,
-            totalAmount,
+            restaurantName: pricedOrder.canonicalRestaurantName,
+            itemsPurchased: pricedOrder.sanitizedItems,
+            totalAmount: pricedOrder.totalAmount,
             fullName,
             email,
             phoneNumber: formatPhoneNumber(phoneNumber),
@@ -122,7 +133,6 @@ const updateorder = async (req, res, next) => {
     const {
         restaurantName,
         itemsPurchased,
-        totalAmount,
         fullName,
         email,
         phoneNumber,
@@ -131,7 +141,7 @@ const updateorder = async (req, res, next) => {
 
     try {
         // Validate required fields
-        if (!itemsPurchased || !totalAmount || !fullName || !phoneNumber || !pickupTime) {
+        if (!itemsPurchased || !fullName || !phoneNumber || !pickupTime) {
             return res.status(400).json({ message: "All fields are required" });
         }
 
@@ -163,6 +173,17 @@ const updateorder = async (req, res, next) => {
             });
         }
 
+        // Authoritative server-side pricing on updated items
+        let pricedOrder;
+        try {
+            pricedOrder = validateAndPriceOrderItems(existingOrder.restaurantName, itemsPurchased);
+        } catch (validationErr) {
+            return res.status(validationErr.status || 400).json({
+                error: 'Bad Request',
+                message: validationErr.message
+            });
+        }
+
         // Format pickup time to HH:mm format
         const formattedPickupTime = pickupTime.replace(/\s+/g, '') // Remove any spaces
             .replace(/AM|PM/gi, '') // Remove AM/PM
@@ -176,8 +197,8 @@ const updateorder = async (req, res, next) => {
             id,
             {
                 restaurantName: existingOrder.restaurantName,
-                itemsPurchased,
-                totalAmount: parseFloat(totalAmount.toFixed(2)),
+                itemsPurchased: pricedOrder.sanitizedItems,
+                totalAmount: pricedOrder.totalAmount,
                 fullName,
                 email: existingOrder.email,
                 phoneNumber: formatPhoneNumber(phoneNumber),

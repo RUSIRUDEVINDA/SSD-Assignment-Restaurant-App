@@ -213,9 +213,10 @@ const Cart = () => {
       setIsSuccess(true);
       setPickupTime(data.pickupTime);
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error placing order:', error);
-      toast.error('Failed to place order. Please try again.');
+      const serverMsg = error?.response?.data?.message || error?.response?.data?.error;
+      toast.error(serverMsg || 'Failed to place order. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
