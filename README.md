@@ -57,7 +57,7 @@ Through this methodology, **8 distinct security vulnerabilities** (spanning Auth
 | **V01** | Hardcoded / Exposed Credentials & Secrets | Secrets Management<br>`CWE-798` | **Gitleaks**<br>**OWASP ZAP** (Spider) | Static scanning detected database URIs, API tokens, and credentials stored in plain text or client-visible bundles. | Removed secrets from version control, added `.gitignore` rules, provided `.env.example`, and loaded credentials strictly through environment variables. |
 | **V02** | Broken Server-Side Authentication | OWASP Top 10: `A07:2021`<br>Auth Failures | **OWASP ZAP**<br>**Semgrep** | Calling protected backend routes without bearer tokens or session state was accepted by unauthenticated endpoints. | Integrated OpenID Connect (OIDC) JWT token cryptographic verification (`requireAuth`), validating issuer, audience, and RS256 signature against Auth0 JWKS. |
 | **V03** | Broken Admin Authorization & Missing Tenant Scope | OWASP Top 10: `A01:2021`<br>Broken Access Control | **OWASP ZAP**<br>**Semgrep** | Non-admin users or cross-restaurant managers could modify administrative order/reservation status and access other tenants' data. | Implemented Role-Based Access Control (`requireRole`) and multi-tenant restaurant scoping (`requireRestaurantScopeByName/Id`) with fail-closed access guards. |
-| **V04** | IDOR / Broken Object-Level Authorization (BOLA) | OWASP API: `API1:2023`<br>OWASP Top 10: `A01:2021` | **OWASP ZAP**<br>**cURL** | Modifying URL object IDs or email query parameters allowed users to view and manipulate other customers' reservations and orders. | Derived user identity strictly from cryptographically verified server session claims; bound database lookups to verified user identity (`User A != User B`). |
+| **V04** | Internal Information Disclosure & Verbose Error Leakage | OWASP Top 10: `A05:2021`<br>Security Misconfig (`CWE-209`) | **OWASP ZAP**<br>**Semgrep**<br>**cURL** | Dispatching malformed JSON payloads or invalid MongoDB ObjectIDs triggered unhandled exceptions returning raw error messages (`err.message`), database schema internals, and stack traces. | Implemented centralized error handling middleware (`errorHandler.js`) and sanitized controller catch blocks; returns generic HTTP 400/500 client responses while logging detailed diagnostics server-side. |
 | **V05** | Mass Assignment / Over-Posting | OWASP API: `API3:2023`<br>`CWE-915` | **OWASP ZAP** (Request Editor)<br>**Semgrep** | Sending additional JSON keys (`status: "confirmed"`, `restaurantId: "HACKED_999"`, `isAdminReservation: true`) mutated protected database attributes. | Created strict Data Transfer Object (DTO) allowlist schemas (`validationSchemas.js`); explicitly rejected unapproved properties with HTTP `400 Bad Request`. |
 | **V06** | Price & Business-Logic Tampering | OWASP Top 10: `A04:2021`<br>Insecure Design (`CWE-472`) | **OWASP ZAP** (Proxy Intercept)<br>**Semgrep** | Intercepting `POST /restaurant/orders` to set `"totalAmount": 0.01` or `"price": 0.01` resulted in the server storing 1-cent orders in MongoDB. | Established an authoritative server-side menu catalog (`menuCatalog.js`); server ignores client-sent prices, validates positive integer quantities, and computes totals. |
 | **V07** | HTML Injection in Automated Emails | OWASP Top 10: `A03:2021`<br>Injection (`CWE-79`) | **OWASP ZAP**<br>**Semgrep** | Injecting harmless HTML/formatting markers (`<b>TEST</b>`) into order or reservation customer names rendered unescaped markup in outgoing email receipts. | Implemented contextual HTML output encoding (`escapeHtml.js`) across all dynamic parameters before string interpolation into Nodemailer templates. |
@@ -72,30 +72,40 @@ Through this methodology, **8 distinct security vulnerabilities** (spanning Auth
 - **How Detected:** `gitleaks detect --verbose` identified hardcoded keys. OWASP ZAP flagged unauthenticated routes returning HTTP `200 OK`.
 - **Tackle & Fix:** Sensitive credentials were extracted to environment configurations (`.env`). Server-side JWT authentication middleware (`backend/middleware/authMiddleware.js`) was deployed using `express-oauth2-jwt-bearer`, cryptographically validating access tokens against the identity provider's JSON Web Key Set (JWKS).
 
-### 4.2 Access Control & Multi-Tenancy (V03, V04)
+### 4.2 Access Control & Multi-Tenancy (V03)
 - **Problem:** Administrative endpoints (`/restaurant/orders/status/:id`, `/api/reservations/:id`) accepted requests regardless of caller role or restaurant tenancy.
 - **How Detected:** OWASP ZAP sent administrative mutations using standard customer tokens; Semgrep detected route handlers without role checks.
 - **Tackle & Fix:**
   - Role-Based Access Control (`backend/middleware/authorization.js`): Enforces roles (`mainAdmin`, `admin`, `customer`).
   - Authoritative Directory Scoping (`backend/utils/restaurantMapping.js`): Binds restaurant administrators strictly to their assigned canonical restaurant ID, preventing horizontal cross-tenant tampering.
-  - Ownership Constraints: Database queries enforce that customer operations match verified caller tokens rather than client-supplied parameters.
+  - Operational Status Guardrails: Restricts sensitive reservation and order lifecycle operations strictly to verified restaurant administrators.
 
-### 4.3 API Object Properties & Mass Assignment (V05)
+### 4.3 Internal Information Disclosure & Verbose Error Leakage (V04)
+- **Problem:** Controller catch blocks repeatedly passed raw exception objects directly to clients via `res.status(500).json({ error: err.message })`. In addition, malformed JSON bodies processed by Express body-parser yielded default HTML error responses disclosing full stack traces, Node.js filesystem paths, and internal Mongoose casting internals (`Cast to ObjectId failed for model "Reservation"`).
+- **How Detected:**
+  - **cURL & OWASP ZAP:** Sending invalid JSON syntax or non-hex ID strings (e.g., `PATCH /api/reservations/invalid-id/modify`) triggered verbose 500 error responses exposing internal database schema names and query logic.
+  - **Semgrep:** Custom SAST rule [`semgrep-rules/v04-verbose-errors.yml`](semgrep-rules/v04-verbose-errors.yml) identified insecure exception returns matching `$RES.status($STATUS).json({ error: $ERR.message })`.
+- **Tackle & Fix:**
+  - **Centralized Error Handling Middleware (`backend/middleware/errorHandler.js`):** Intercepts syntax errors, body parser failures, and unhandled runtime exceptions. Emits uniform, sanitized JSON responses (`400 Invalid JSON payload`, `400 Invalid ID format`, `500 Internal server error`).
+  - **Controller Catch-Block Hardening:** Hardened `reservationController.js`, `reservationRequestController.js`, `restaurantController.js`, and `restaurantOrderController.js` to catch `CastError` and `ValidationError` specifically, returning clean HTTP `400` status codes without leaking Mongoose internal structures.
+  - **Server-Side Diagnostics Preservation:** Retained full stack trace and diagnostic logging via `console.error` exclusively on the server, ensuring rapid operator troubleshooting without exposing internal architecture to external actors.
+
+### 4.4 API Object Properties & Mass Assignment (V05)
 - **Problem:** Resource update routes passed unvalidated `req.body` directly to Mongoose `findByIdAndUpdate()`.
 - **How Detected:** Via OWASP ZAP Manual Request Editor, extra fields (`"status": "confirmed"`, `"restaurantId": "HACKED_999"`, `"isAdminReservation": true`) were added to a reservation modification payload. The backend accepted and stored them.
 - **Tackle & Fix:** Introduced a dedicated DTO validation engine (`backend/utils/validationSchemas.js`). The engine inspects incoming request keys against positive allowlists (`ALLOWED_RESERVATION_FIELDS`), actively rejects protected system fields with HTTP `400 Bad Request`, and only passes sanitized DTOs to the database.
 
-### 4.4 Business Logic & Price Tampering (V06)
+### 4.5 Business Logic & Price Tampering (V06)
 - **Problem:** The backend extracted `totalAmount` directly from `req.body`, or calculated it using client-sent `item.price`.
 - **How Detected:** Using OWASP ZAP's Break tool on `POST /restaurant/orders`, items worth $32.95 were modified to `"price": 0.01` and `"totalAmount": 0.01`. The backend accepted the order and persisted the 1-cent total.
 - **Tackle & Fix:** Implemented an Authoritative Menu Catalog (`backend/utils/menuCatalog.js`). The backend now treats client prices as untrusted noise, performs catalog price lookups based on verified item names, validates integer quantities ($1 \le quantity \le 50$), and authoritatively calculates order subtotals and totals on the server.
 
-### 4.5 Injection & Output Encoding (V07)
+### 4.6 Injection & Output Encoding (V07)
 - **Problem:** Dynamic user values were interpolated directly into HTML email templates without character encoding.
 - **How Detected:** Submitting inputs with HTML characters through ZAP revealed unescaped tags rendered inside simulated email bodies.
 - **Tackle & Fix:** Introduced `backend/utils/escapeHtml.js` applying contextual HTML entity encoding (`&`, `<`, `>`, `"`, `'`) to all untrusted customer attributes before building email markup.
 
-### 4.6 API Rate Limiting & Resource Abuse Protection (V08)
+### 4.7 API Rate Limiting & Resource Abuse Protection (V08)
 - **Problem:** The API lacked request rate limiting or payload size caps, allowing unbounded automated requests.
 - **How Detected:** OWASP ZAP Fuzzer dispatched rapid concurrent requests; all returned success without rate limiting.
 - **Tackle & Fix:** Mounted `backend/middleware/resourceProtection.js` implementing IP-based window rate limiters (e.g., standard API limits and strict checkout/reservation limits) that return HTTP `429 Too Many Requests` with `Retry-After` headers when thresholds are exceeded.
@@ -116,12 +126,13 @@ npm test
 ```text
 ✔ V03: Administrator Authorization & Tenant Scope Verification (21 tests pass)
 ✔ V03: Cryptographic Identity & Provisioning Integration (16 tests pass)
-✔ V06: Price & Business-Logic Authoritative Calculation (12 tests pass)
+✔ V04: Error Sanitization and Information Disclosure Prevention (6 tests pass)
 ✔ V05: DTO Allowlist & Mass Assignment Prevention (11 tests pass)
+✔ V06: Price & Business-Logic Authoritative Calculation (12 tests pass)
 
-ℹ tests 60
+ℹ tests 66
 ℹ suites 0
-ℹ pass 60
+ℹ pass 66
 ℹ fail 0
 ```
 
@@ -137,6 +148,7 @@ semgrep scan --config semgrep-rules/ .
 ```
 
 * [`semgrep-rules/v03-access-control.yml`](semgrep-rules/v03-access-control.yml): Flags privileged PATCH handlers lacking authorization middleware.
+* [`semgrep-rules/v04-verbose-errors.yml`](semgrep-rules/v04-verbose-errors.yml): Flags route handlers returning raw exception details (`err.message`) to clients.
 * [`semgrep-rules/v05-mass-assignment.yml`](semgrep-rules/v05-mass-assignment.yml): Flags direct `req.body` assignment into database mutation methods without DTO filtering.
 * [`semgrep-rules/v06-price-tampering.yml`](semgrep-rules/v06-price-tampering.yml): Flags route handlers that extract or calculate order totals using client-supplied price parameters.
 
@@ -146,13 +158,16 @@ semgrep scan --config semgrep-rules/ .
 
 ```text
 ├── backend/
-│   ├── app.js                              # Express app with security middleware chain
+│   ├── app.js                              # Express app with security middleware chain & error handling
 │   ├── controllers/
-│   │   ├── reservationController.js        # Hardened reservation controller (DTO allowlist)
+│   │   ├── reservationController.js        # Hardened reservation controller (DTO allowlist & error sanitization)
+│   │   ├── reservationRequestController.js # Hardened reservation request controller (error sanitization)
+│   │   ├── restaurantController.js         # Hardened restaurant controller (error sanitization)
 │   │   └── restaurantOrderController.js    # Hardened order controller (authoritative pricing)
 │   ├── middleware/
 │   │   ├── authMiddleware.js               # OIDC JWT verification (express-oauth2-jwt-bearer)
 │   │   ├── authorization.js                # RBAC & restaurant scope enforcement
+│   │   ├── errorHandler.js                 # Centralized error handler & information disclosure prevention
 │   │   ├── loadUserIdentity.js             # Cryptographic identity bridge to internal user profile
 │   │   └── resourceProtection.js           # Rate limiting & resource abuse guards
 │   ├── utils/
@@ -163,6 +178,7 @@ semgrep scan --config semgrep-rules/ .
 │   └── tests/
 │       ├── v03-authorization.test.js       # Access control & RBAC test suite
 │       ├── v03-identity-integration.test.js# OIDC token & provisioning test suite
+│       ├── v04-error-sanitization.test.js  # Error response sanitization & information leakage test suite
 │       ├── v05-mass-assignment.test.js     # DTO allowlist regression test suite
 │       └── v06-price-tampering.test.js     # Authoritative pricing regression test suite
 ├── frontend/
@@ -170,6 +186,7 @@ semgrep scan --config semgrep-rules/ .
 │       └── pages/Cart.tsx                  # Cart checkout with server validation handling
 ├── semgrep-rules/
 │   ├── v03-access-control.yml              # Semgrep SAST rule for access control
+│   ├── v04-verbose-errors.yml              # Semgrep SAST rule for raw error disclosure
 │   ├── v05-mass-assignment.yml             # Semgrep SAST rule for mass assignment
 │   └── v06-price-tampering.yml             # Semgrep SAST rule for price tampering
 └── docs/
