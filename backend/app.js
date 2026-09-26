@@ -14,14 +14,18 @@ const cors = require('cors');
 const orderRouter = require("./routes/restaurantOrderRoute");
 const reservationRouter = require("./routes/reservationRoute");
 const restaurantRouter = require("./routes/restaurantRoute");
+<<<<<<< Updated upstream
 const userRouter = require("./routes/userRoute");
 const { requireAuth, authErrorHandler } = require('./middleware/authMiddleware');
 const { errorHandler } = require('./middleware/errorHandler');
+=======
+const { createResourceProtection, validateResourceBounds, resourceErrorHandler } = require('./middleware/resourceProtection');
+>>>>>>> Stashed changes
 
+function createApp() {
 const app = express();
 
 //Middleware 
-app.use(express.json());
 app.use(cors({
   origin: ['http://localhost:8081', 'http://localhost:8083', 'http://localhost:8082'],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
@@ -37,9 +41,16 @@ app.options('/restaurant/*', (req, res) => {
   res.status(200).end();
 });
 
+const { apiLimiter, writeLimiter } = createResourceProtection();
+// Reject excessive traffic before parsing bodies, querying MongoDB or sending mail.
+app.use(['/restaurant', '/api'], apiLimiter, writeLimiter);
+app.use(express.json({ limit: '32kb', inflate: false }));
+app.use(validateResourceBounds);
+
 app.use("/restaurant", orderRouter);
 app.use("/restaurant", restaurantRouter);
 app.use("/api", reservationRouter);
+<<<<<<< Updated upstream
 app.use("/api", userRouter);
 
 // Authentication Error Handler
@@ -47,7 +58,13 @@ app.use(authErrorHandler);
 
 // Centralized Application Error Handler (V04)
 app.use(errorHandler);
+=======
+app.use(resourceErrorHandler);
+return app;
+}
+>>>>>>> Stashed changes
 
+if (require.main === module) {
 if (!process.env.MONGODB_URI) {
   console.error("MONGODB_URI environment variable is required");
   process.exit(1);
@@ -56,6 +73,9 @@ if (!process.env.MONGODB_URI) {
 mongoose.connect(process.env.MONGODB_URI)
   .then(() => console.log("Connected to MongoDB"))
   .then(() => {
-    app.listen(process.env.PORT || 5000);
+    createApp().listen(process.env.PORT || 5000);
   })
   .catch((err) => console.log((err)));
+}
+
+module.exports = { createApp };
