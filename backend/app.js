@@ -1,4 +1,7 @@
-require("dotenv").config();
+const path = require("node:path");
+// Load repo-root .env first, then backend/.env overrides when present.
+require("dotenv").config({ path: path.join(__dirname, "../.env") });
+require("dotenv").config({ path: path.join(__dirname, ".env") });
 const dns = require("node:dns");
 
 // Configure reliable DNS servers to stabilize MongoDB Atlas SRV lookups on Windows
@@ -14,13 +17,10 @@ const cors = require('cors');
 const orderRouter = require("./routes/restaurantOrderRoute");
 const reservationRouter = require("./routes/reservationRoute");
 const restaurantRouter = require("./routes/restaurantRoute");
-<<<<<<< Updated upstream
 const userRouter = require("./routes/userRoute");
-const { requireAuth, authErrorHandler } = require('./middleware/authMiddleware');
+const { authErrorHandler } = require('./middleware/authMiddleware');
 const { errorHandler } = require('./middleware/errorHandler');
-=======
 const { createResourceProtection, validateResourceBounds, resourceErrorHandler } = require('./middleware/resourceProtection');
->>>>>>> Stashed changes
 
 function createApp() {
 const app = express();
@@ -50,19 +50,13 @@ app.use(validateResourceBounds);
 app.use("/restaurant", orderRouter);
 app.use("/restaurant", restaurantRouter);
 app.use("/api", reservationRouter);
-<<<<<<< Updated upstream
 app.use("/api", userRouter);
 
-// Authentication Error Handler
 app.use(authErrorHandler);
-
-// Centralized Application Error Handler (V04)
 app.use(errorHandler);
-=======
 app.use(resourceErrorHandler);
 return app;
 }
->>>>>>> Stashed changes
 
 if (require.main === module) {
 if (!process.env.MONGODB_URI) {
