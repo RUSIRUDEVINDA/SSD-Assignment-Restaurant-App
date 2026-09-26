@@ -1,0 +1,15 @@
+rules:
+  - id: v05-mass-assignment-unvalidated-body-update
+    message: >
+      Passing 'req.body' directly into database update operations (findByIdAndUpdate,
+      updateOne, update) without an explicit DTO allowlist schema enables Mass Assignment /
+      Over-Posting (OWASP API3: Broken Object Property Level Authorization, CWE-915).
+    severity: ERROR
+    languages:
+      - javascript
+    patterns:
+      - pattern-either:
+          - pattern: $MODEL.findByIdAndUpdate($ID, req.body, ...)
+          - pattern: $MODEL.updateOne($QUERY, req.body, ...)
+          - pattern: $MODEL.updateMany($QUERY, req.body, ...)
+          - pattern: Object.assign($DOC, req.body)
