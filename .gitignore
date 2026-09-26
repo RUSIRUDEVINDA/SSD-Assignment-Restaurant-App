@@ -6,5 +6,9 @@ node_modules
 !.env.example
 !**/.env.example
 docs/security/member2-before-findings.md
+docs/security/member4-cmd-evidence.cmd
+docs/security/member4-evidence.pdf
+docs/security/member4-final-report.pdf
+backend/tests/member4-evidence-runner.js
 /evidence
 
