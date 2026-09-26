@@ -65,7 +65,13 @@ exports.createReservation = async (req, res) => {
     res.status(201).json(reservation);
   } catch (err) {
     console.error('[Reservation Error]', err);
-    res.status(500).json({ error: err.message });
+    if (err.name === 'CastError') {
+      return res.status(400).json({ error: 'Invalid ID format' });
+    }
+    if (err.name === 'ValidationError') {
+      return res.status(400).json({ error: 'Invalid reservation data' });
+    }
+    res.status(500).json({ error: 'Internal server error' });
   }
 };
 
@@ -76,7 +82,11 @@ exports.getReservationsByRestaurant = async (req, res) => {
     const reservations = await Reservation.find({ restaurantId });
     res.json(reservations);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[Reservation Error]', err);
+    if (err.name === 'CastError') {
+      return res.status(400).json({ error: 'Invalid restaurant ID' });
+    }
+    res.status(500).json({ error: 'Internal server error' });
   }
 };
 
@@ -124,7 +134,11 @@ exports.modifyReservation = async (req, res) => {
     const updatedReservation = await Reservation.findByIdAndUpdate(reservationId, allowedUpdates, { new: true });
     return res.json(updatedReservation);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[Reservation Error]', err);
+    if (err.name === 'CastError') {
+      return res.status(400).json({ error: 'Invalid reservation ID' });
+    }
+    res.status(500).json({ error: 'Internal server error' });
   }
 };
 
@@ -174,7 +188,10 @@ exports.updateReservationStatus = async (req, res) => {
     res.json(updatedReservation);
   } catch (err) {
     console.error('[Reservation Error]', err);
-    res.status(500).json({ error: err.message });
+    if (err.name === 'CastError') {
+      return res.status(400).json({ error: 'Invalid reservation ID' });
+    }
+    res.status(500).json({ error: 'Internal server error' });
   }
 };
 
@@ -192,7 +209,7 @@ exports.getReservationsByUserEmail = async (req, res) => {
     res.json(reservations);
   } catch (err) {
     console.error('[Reservation Error]', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 };
 
@@ -225,6 +242,9 @@ exports.getReservationById = async (req, res) => {
     res.json(reservation);
   } catch (err) {
     console.error('[Reservation Error]', err);
-    res.status(500).json({ error: err.message });
+    if (err.name === 'CastError') {
+      return res.status(400).json({ error: 'Invalid reservation ID' });
+    }
+    res.status(500).json({ error: 'Internal server error' });
   }
 };

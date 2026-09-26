@@ -1,0 +1,10 @@
+rules:
+  - id: v04-raw-error-message-response
+    message: Raw exception details are returned to the client.
+    severity: ERROR
+    languages:
+      - javascript
+    patterns:
+      - pattern-either:
+          - pattern: '$RES.status($STATUS).json({ error: $ERR.message })'
+          - pattern: '$RES.status($STATUS).json({ message: $ERR.message })'

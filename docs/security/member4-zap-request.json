@@ -1,0 +1,9 @@
+{
+  "restaurantName": "Barista",
+  "itemsPurchased": [{ "name": "Coffee", "quantity": 1, "price": 450 }],
+  "totalAmount": 450,
+  "fullName": "ZAP_RATE_TEST",
+  "email": "member4@example.invalid",
+  "phoneNumber": "0770000000",
+  "pickupTime": "12:00"
+}

@@ -1,0 +1,22 @@
+rules:
+  - id: member4-email-html-injection
+    message: Dynamic confirmation-email text is inserted without the project's escapeHtml output encoder.
+    severity: WARNING
+    languages: [generic]
+    paths:
+      include: ['**/services/emailService.js']
+    pattern-regex: '\$\{(?:fullName|restaurantName|orderId|pickupTime|totalAmount|reservationId|date|time|guests|item\.name|item\.quantity)\}'
+  - id: member4-review-missing-rate-protection
+    message: App constructs Express without the rateLimit/createResourceProtection integration. Heuristic review finding; confirm by bounded HTTP replay.
+    severity: WARNING
+    languages: [generic]
+    paths:
+      include: ['**/app.js']
+    pattern-regex: '(?s)\A(?!.*(?:rateLimit|createResourceProtection)).*?const app = express\(\);'
+  - id: member4-review-default-json-limit
+    message: Explicitly choose a JSON resource policy. Express already defaults to 100kb; this is hardening, not evidence of unlimited body size.
+    severity: INFO
+    languages: [javascript]
+    paths:
+      include: ['**/app.js']
+    pattern: express.json()
