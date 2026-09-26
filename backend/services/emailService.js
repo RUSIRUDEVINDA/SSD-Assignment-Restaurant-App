@@ -42,8 +42,8 @@ async function sendOrderConfirmation(to, order) {
           
           <h1 style="color:#1a237e;margin:0;font-size:1.6em;">Order Confirmed!</h1>
         </div>
-        <p style="font-size:1.1em;">Hello <strong>${escapeHtml(fullName)}</strong>,</p>
-        <p>Your order from <span style="font-weight:600; color:#0078d7">${escapeHtml(restaurantName)}</span> has been confirmed.</p>
+        <p style="font-size:1.1em;">Hello ${escapeHtml(fullName)},</p>
+        <p>Your order from <span style="color:#0078d7">${escapeHtml(restaurantName)}</span> has been confirmed.</p>
         <table style="width:100%;background:#fff;border-radius:8px;padding:16px 8px;margin:16px 0;box-shadow:0 2px 8px #eee;font-size:1em;">
           <tr><td><b>Order ID:</b></td><td>${escapeHtml(orderId)}</td></tr>
           <tr><td><b>Pickup Time:</b></td><td>${escapeHtml(pickupTime)}</td></tr>
@@ -84,8 +84,8 @@ async function sendReservationConfirmation(to, reservation) {
           
           <h1 style="color:#1a237e;margin:0;font-size:1.6em;">Reservation Confirmed!</h1>
         </div>
-        <p style="font-size:1.1em;">Hello <strong>${escapeHtml(fullName)}</strong>,</p>
-        <p>Your reservation at <span style="font-weight:600; color:#0078d7">${escapeHtml(restaurantName)}</span> is confirmed.</p>
+        <p style="font-size:1.1em;">Hello ${escapeHtml(fullName)},</p>
+        <p>Your reservation at <span style="color:#0078d7">${escapeHtml(restaurantName)}</span> is confirmed.</p>
         <table style="width:100%;background:#fff;border-radius:8px;padding:16px 8px;margin:16px 0;box-shadow:0 2px 8px #eee;font-size:1em;">
           <tr><td><b>Reservation ID:</b></td><td>${escapeHtml(reservationId)}</td></tr>
           <tr><td><b>Date:</b></td><td>${escapeHtml(date)}</td></tr>
