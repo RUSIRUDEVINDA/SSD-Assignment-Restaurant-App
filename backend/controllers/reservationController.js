@@ -2,6 +2,7 @@ const Reservation = require('../models/reservationModel');
 const emailService = require('../services/emailService');
 const mongoose = require('mongoose');
 const { isUserInRestaurantScope } = require('../utils/restaurantMapping');
+const { validateReservationModificationDto } = require('../utils/validationSchemas');
 
 // Create a new reservation
 exports.createReservation = async (req, res) => {
@@ -109,29 +110,19 @@ exports.modifyReservation = async (req, res) => {
       });
     }
 
-    // Reject attempts to reassign restaurant scope or arbitrarily change status
-    if (body.restaurantId && String(body.restaurantId).trim() !== String(reservation.restaurantId).trim()) {
-      return res.status(400).json({ error: 'Bad Request', message: 'Cannot reassign reservation restaurant' });
-    }
-    if (body.restaurantName && body.restaurantName.trim().toLowerCase() !== (reservation.restaurantName || '').toLowerCase()) {
-      return res.status(400).json({ error: 'Bad Request', message: 'Cannot reassign reservation restaurant name' });
-    }
-    if (body.status && body.status !== 'modified' && body.status !== reservation.status) {
-      return res.status(400).json({ error: 'Bad Request', message: 'Cannot alter reservation status through generic modify endpoint' });
+    // Strict DTO allowlist validation (OWASP API3 / CWE-915)
+    // Rejects any attempt to inject protected fields (status, restaurantId, customerEmail, isAdminReservation)
+    let sanitizedDto;
+    try {
+      sanitizedDto = validateReservationModificationDto(body, reservation);
+    } catch (valErr) {
+      return res.status(valErr.status || 400).json({
+        error: 'Bad Request',
+        message: valErr.message
+      });
     }
 
-    // Prevent tampering with ownership/system fields; use explicit allowlist only
-    const allowedUpdates = {};
-    if (body.date) allowedUpdates.date = new Date(body.date);
-    if (body.time) allowedUpdates.time = body.time;
-    if (body.partySize) allowedUpdates.partySize = Number(body.partySize);
-    if (body.customerPhone) allowedUpdates.customerPhone = body.customerPhone;
-    if (body.customerName) allowedUpdates.customerName = body.customerName;
-
-    allowedUpdates.status = 'modified';
-    allowedUpdates.updatedAt = Date.now();
-
-    const updatedReservation = await Reservation.findByIdAndUpdate(reservationId, allowedUpdates, { new: true });
+    const updatedReservation = await Reservation.findByIdAndUpdate(reservationId, sanitizedDto, { new: true });
     return res.json(updatedReservation);
   } catch (err) {
     console.error('[Reservation Error]', err);

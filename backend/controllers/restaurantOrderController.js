@@ -4,6 +4,7 @@ const emailService = require("../services/emailService");
 const { formatPhoneNumber } = require("../utils/phoneUtils");
 const { isUserInRestaurantScope } = require("../utils/restaurantMapping");
 const { validateAndPriceOrderItems } = require("../utils/menuCatalog");
+const { validateOrderModificationDto } = require("../utils/validationSchemas");
 
 //data display
 const getAllOrders = async (req, res, next) => {
@@ -170,6 +171,17 @@ const updateorder = async (req, res, next) => {
             return res.status(400).json({
                 error: 'Bad Request',
                 message: 'Reassigning order customer ownership email is not permitted'
+            });
+        }
+
+        // Strict DTO allowlist validation (OWASP API3 / CWE-915)
+        // Rejects any attempt to inject protected fields (status, isAdminOrder, etc.)
+        try {
+            validateOrderModificationDto(req.body, existingOrder);
+        } catch (valErr) {
+            return res.status(valErr.status || 400).json({
+                error: 'Bad Request',
+                message: valErr.message
             });
         }
 
